@@ -1,0 +1,19 @@
+{
+    "allowedChains": [
+        "near",
+        "arbitrum",
+        "base",
+        "ethereum"
+    ],
+    "allowedRecipients": [
+        "intentagent-recip-5kf8.testnet",
+        "bob.near",
+        "alice.eth",
+        "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+    ],
+    "dailyCapUsd": 20,
+    "demoEvmRecipient": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    "maxPerTxUsd": 5,
+    "quoteRefundTo": "intents.near",
+    "serviceFeeBps": 10
+}

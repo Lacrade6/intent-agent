@@ -1,0 +1,71 @@
+
+> intent-agent@1.0.0 demo
+> node src/cli.js --demo
+
+══════════════════════════════════════════════════════════
+  IntentAgent — scripted demo (NEAR testnet only)
+  Agent: intentagent-5kf8.testnet   Recipient: intentagent-recip-5kf8.testnet
+══════════════════════════════════════════════════════════
+
+[Act 1] POLICY — the agent refuses a bad payment
+
+── Plan ──────────────────────────────────────────────
+Instruction : send 100 NEAR to mallory.near
+Action      : send 100 NEAR (near → near)
+Destination : mallory.near
+Receive     : NEAR on NEAR
+Value       : $371.0000
+Quote source: local
+You pay     : 100 NEAR
+Recipient gets: 99.9 NEAR ($370.6290)
+Service fee : 0.1% = 0.10000 NEAR ($0.3710)
+Time estimate: ~2s
+Execution   : REAL testnet transfer (NEAR testnet)
+
+⛔ POLICY REFUSED:
+   - amount $371.00 exceeds per-transaction limit $5
+   - daily cap $20 would be exceeded (spent today $0.00 + $371.00)
+   - recipient "mallory.near" is not on the allowlist
+
+⛔ Refused and recorded in the ledger (id pay-1794428887513-0).
+
+[Act 2] CROSS-CHAIN QUOTE — real 1-Click dry quote, simulated settlement
+
+── Plan ──────────────────────────────────────────────
+Instruction : swap 1 NEAR to USDC on Arbitrum
+Action      : swap 1 NEAR (near → arbitrum)
+Receive     : USDC on Arbitrum
+Value       : $3.7100
+Quote source: 1click-live
+You pay     : 1 NEAR
+Recipient gets: 3.691619 USDC ($3.6916)
+Service fee : 0.1% ($0.0037)
+Time estimate: ~21s
+Note        : Live dry quote from the NEAR Intents 1-Click API (no JWT; 0.25% unauthenticated fee included).
+Execution   : SIMULATED SETTLEMENT — NEAR Intents has no testnet (HACKATHON.md Q-007). A real settlement needs a mainnet deposit, which this testnet-only demo never makes.
+
+🔶 SIMULATED settlement (no real tx — see note above)
+   simulation id: sim-1794428888307
+
+[Act 3] REAL TESTNET PAYMENT — executed on-chain
+
+── Plan ──────────────────────────────────────────────
+Instruction : send 0.01 NEAR to intentagent-recip-5kf8.testnet
+Action      : send 0.01 NEAR (near → near)
+Destination : intentagent-recip-5kf8.testnet
+Receive     : NEAR on NEAR
+Value       : $0.0371
+Quote source: local
+You pay     : 0.01 NEAR
+Recipient gets: 0.00999 NEAR ($0.0371)
+Service fee : 0.1% = 0.00001 NEAR ($0.0000)
+Time estimate: ~2s
+Execution   : REAL testnet transfer (NEAR testnet)
+
+✅ EXECUTED on NEAR testnet
+   tx hash : 6siBpx19qaHhrphWnSY5TR8Ci7nFUPZPFbhzNn2ymwsK
+   explorer: https://testnet.nearblocks.io/txns/6siBpx19qaHhrphWnSY5TR8Ci7nFUPZPFbhzNn2ymwsK
+
+── Demo summary ────────────────────────────────────────
+Payments recorded: 2   Fees earned: 0.00001 NEAR ($0.0037)
+Ledger: data/history.json

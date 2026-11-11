@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IntentAgent — NEAR testnet dashboard</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --text:#e6edf3; --dim:#8b949e; --green:#3fb950; --amber:#d29922; --red:#f85149; --blue:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  header { padding:20px 24px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:20px; }
+  .badge { background:#1f6feb; color:#fff; border-radius:20px; padding:2px 10px; font-size:12px; }
+  .badge.warn { background:var(--amber); color:#000; }
+  main { max-width:960px; margin:0 auto; padding:20px 24px 60px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:700px){ .grid{grid-template-columns:1fr;} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .card h2 { margin:0 0 12px; font-size:15px; }
+  .big { font-size:28px; font-weight:700; }
+  .dim { color:var(--dim); font-size:13px; }
+  label { display:block; font-size:12px; color:var(--dim); margin:10px 0 4px; }
+  input, textarea, select { width:100%; background:#0d1117; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:9px 10px; font:inherit; font-size:14px; }
+  button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:10px 16px; font:inherit; font-size:14px; cursor:pointer; margin-top:12px; }
+  button.secondary { background:#21262d; border:1px solid var(--line); }
+  button.approve { background:var(--green); color:#000; font-weight:700; }
+  button:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:400; }
+  .ok { color:var(--green); } .bad { color:var(--red); } .sim { color:var(--amber); }
+  a { color:var(--blue); }
+  pre { white-space:pre-wrap; word-break:break-word; background:#0d1117; border:1px solid var(--line); border-radius:6px; padding:12px; font-size:13px; }
+  .examples button { margin:4px 6px 0 0; font-size:12px; padding:6px 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 IntentAgent</h1>
+  <span class="badge">NEAR TESTNET ONLY</span>
+  <span class="dim">Tell it what to pay. It handles the chains.</span>
+</header>
+<main>
+  <div class="grid">
+    <div class="card">
+      <h2>Treasury</h2>
+      <div class="big" id="balance">…</div>
+      <div class="dim" id="agent">…</div>
+      <div style="margin-top:12px">Fees earned: <b id="fees">…</b></div>
+      <div class="dim" id="counts">…</div>
+      <div style="margin-top:8px"><a id="explorer" href="#" target="_blank" rel="noopener">View agent on testnet explorer →</a></div>
+    </div>
+    <div class="card">
+      <h2>Policy (human rules — the agent cannot override)</h2>
+      <label>Max per transaction (USD)</label>
+      <input id="p-max" type="number" step="0.01" min="0">
+      <label>Daily cap (USD)</label>
+      <input id="p-daily" type="number" step="0.01" min="0">
+      <label>Service fee (basis points, 10 = 0.1%)</label>
+      <input id="p-fee" type="number" step="1" min="0" max="1000">
+      <label>Allowed chains (comma-separated)</label>
+      <input id="p-chains" type="text">
+      <label>Allowed recipients (comma-separated)</label>
+      <textarea id="p-recips" rows="3"></textarea>
+      <button id="save-policy">Save policy</button>
+      <span class="dim" id="policy-msg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>New payment — type a plain instruction</h2>
+    <input id="instruction" type="text" placeholder='e.g. send 0.01 NEAR to the demo recipient' autocomplete="off">
+    <div class="examples">
+      <button class="secondary" id="ex-send">send 0.01 NEAR (real testnet)</button>
+      <button class="secondary" data-ex="swap 1 NEAR to USDC on Arbitrum">swap 1 NEAR → USDC on Arbitrum</button>
+      <button class="secondary" data-ex="pay 5 USDC on Base to alice.eth">pay 5 USDC on Base to alice.eth</button>
+      <button class="secondary" data-ex="send 100 NEAR to mallory.near">send 100 NEAR to mallory.near (refused)</button>
+    </div>
+    <button id="plan-btn">Get plan + quote</button>
+    <div id="plan-out" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Payment history</h2>
+    <div id="history">Loading…</div>
+  </div>
+</main>
+<script>
+async function api(path, opts) {
+  const r = await fetch(path, { headers: {'Content-Type':'application/json'}, ...opts });
+  return r.json();
+}
+async function refreshStatus() {
+  const s = await api('/api/status');
+  if (s.error) { document.getElementById('balance').textContent = 'error: ' + s.error; return; }
+  document.getElementById('balance').textContent = s.balance + ' NEAR';
+  document.getElementById('agent').textContent = 'Agent: ' + s.agent + '  ·  Recipient: ' + s.recipient + ' (' + s.recipientBalance + ' NEAR)';
+  document.getElementById('fees').textContent = s.feesEarned.near.toFixed(5) + ' NEAR ($' + s.feesEarned.usd.toFixed(4) + ')';
+  document.getElementById('counts').textContent = s.feesEarned.count + ' payments recorded';
+  document.getElementById('explorer').href = s.explorerAccount;
+  document.getElementById('p-max').value = s.policy.maxPerTxUsd;
+  document.getElementById('p-daily').value = s.policy.dailyCapUsd;
+  document.getElementById('p-fee').value = s.policy.serviceFeeBps;
+  document.getElementById('p-chains').value = s.policy.allowedChains.join(', ');
+  document.getElementById('p-recips').value = s.policy.allowedRecipients.join(', ');
+  const exSend = document.getElementById('ex-send');
+  exSend.dataset.ex = `send 0.01 NEAR to ${s.recipient}`;
+  exSend.textContent = `send 0.01 NEAR to ${s.recipient} (real testnet)`;
+  document.getElementById('instruction').placeholder = `e.g. send 0.01 NEAR to ${s.recipient}`;
+}
+async function refreshHistory() {
+  const h = await api('/api/history');
+  if (!h.length) { document.getElementById('history').innerHTML = '<span class="dim">No payments yet.</span>'; return; }
+  let rows = h.map(e => {
+    const st = e.status === 'executed' ? '<span class="ok">EXECUTED</span>'
+      : e.status === 'simulated' ? '<span class="sim">SIMULATED</span>'
+      : e.status === 'refused' ? '<span class="bad">REFUSED</span>' : e.status;
+    const link = e.txHash ? `<a href="${e.explorerUrl}" target="_blank" rel="noopener">${e.txHash.slice(0,12)}…</a>` : (e.simulationId || '—');
+    const fee = e.feeNear ? e.feeNear.toFixed(5) + ' NEAR' : (e.feeUsd ? '$' + e.feeUsd.toFixed(4) : '—');
+    return `<tr><td>${e.recordedAt.slice(0,19).replace('T',' ')}</td><td>${e.instruction}</td><td>${st}</td><td>${e.recipientGets ? e.recipientGets + ' ' + (e.toAsset || e.asset) : '—'}</td><td>${fee}</td><td>${link}</td></tr>`;
+  }).join('');
+  document.getElementById('history').innerHTML = `<table><tr><th>When</th><th>Instruction</th><th>Status</th><th>Recipient gets</th><th>Fee</th><th>Tx / sim</th></tr>${rows}</table>`;
+}
+document.getElementById('save-policy').onclick = async () => {
+  const body = {
+    maxPerTxUsd: parseFloat(document.getElementById('p-max').value),
+    dailyCapUsd: parseFloat(document.getElementById('p-daily').value),
+    serviceFeeBps: parseInt(document.getElementById('p-fee').value, 10),
+    allowedChains: document.getElementById('p-chains').value.split(',').map(s => s.trim()).filter(Boolean),
+    allowedRecipients: document.getElementById('p-recips').value.split(',').map(s => s.trim()).filter(Boolean),
+  };
+  await api('/api/policy', { method: 'POST', body: JSON.stringify(body) });
+  document.getElementById('policy-msg').textContent = 'Saved.';
+  setTimeout(() => document.getElementById('policy-msg').textContent = '', 2000);
+};
+document.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => {
+  document.getElementById('instruction').value = b.dataset.ex;
+});
+document.getElementById('ex-send').onclick = () => {
+  document.getElementById('instruction').value = document.getElementById('ex-send').dataset.ex || '';
+};
+let currentPlanId = null;
+document.getElementById('plan-btn').onclick = async () => {
+  const text = document.getElementById('instruction').value.trim();
+  if (!text) return;
+  const out = document.getElementById('plan-out');
+  out.innerHTML = 'Planning…';
+  const plan = await api('/api/plan', { method: 'POST', body: JSON.stringify({ text }) });
+  if (plan.status === 'needs-clarification' || plan.status === 'error') {
+    out.innerHTML = `<pre>❓ ${plan.error}\nHint: ${plan.hint || ''}</pre>`;
+    return;
+  }
+  currentPlanId = plan.planId || null;
+  let html = `<pre>${plan.action.toUpperCase()} ${plan.amount} ${plan.asset}  (${plan.fromChain} → ${plan.toChain})
+Destination : ${plan.destination || '(agent receives on ' + plan.toChain + ')'}${plan.resolvedDestination ? '\nResolved    : ' + plan.resolvedDestination + ' (ENS)' : ''}
+Value       : ${plan.amountUsd !== null ? '$' + plan.amountUsd.toFixed(4) : 'n/a'}
+Quote source: ${plan.quote.source}
+Recipient gets: ${plan.recipientGets} ${plan.toAsset || plan.asset}${plan.recipientGetsUsd !== null && plan.recipientGetsUsd !== undefined ? ' ($' + plan.recipientGetsUsd.toFixed(4) + ')' : ''}
+Service fee : ${plan.feeBps / 100}%${plan.fee.amount ? ' = ' + plan.fee.amount + ' ' + plan.fee.asset : ''}${plan.fee.usd ? ' ($' + plan.fee.usd.toFixed(4) + ')' : ''}${plan.quote.timeEstimate ? '\nTime estimate: ~' + plan.quote.timeEstimate + 's' : ''}${plan.quote.note ? '\nNote: ' + plan.quote.note : ''}
+Execution   : ${plan.execution === 'simulated-cross-chain' ? 'SIMULATED settlement — NEAR Intents has no testnet; no mainnet deposit is ever made in this demo.' : 'REAL testnet transfer'}</pre>`;
+  if (plan.status === 'refused') {
+    html += `<p><span class="bad">⛔ POLICY REFUSED</span></p><ul>${plan.policy.reasons.map(r => `<li>${r}</li>`).join('')}</ul>`;
+  } else {
+    html += `<button class="approve" id="approve-btn">Approve &amp; execute</button> <span class="dim" id="exec-msg"></span>`;
+  }
+  out.innerHTML = html;
+  const ab = document.getElementById('approve-btn');
+  if (ab) ab.onclick = async () => {
+    ab.disabled = true;
+    document.getElementById('exec-msg').textContent = 'Executing…';
+    const res = await api('/api/execute', { method: 'POST', body: JSON.stringify({ planId: currentPlanId }) });
+    if (res.status === 'executed') {
+      document.getElementById('exec-msg').innerHTML = `✅ Executed — <a href="${res.explorerUrl}" target="_blank" rel="noopener">${res.txHash.slice(0,16)}…</a>`;
+    } else if (res.status === 'simulated') {
+      document.getElementById('exec-msg').textContent = '🔶 Simulated settlement recorded (no real tx).';
+    } else {
+      document.getElementById('exec-msg').textContent = '❌ ' + (res.error || 'failed');
+    }
+    refreshStatus(); refreshHistory();
+  };
+};
+refreshStatus(); refreshHistory();
+</script>
+</body>
+</html>
